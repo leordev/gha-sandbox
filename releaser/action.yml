@@ -5,10 +5,75 @@ inputs:
   release-type:
     description: "Release type"
     required: true
+  node-version:
+    description: "Node version"
+    required: false
+  npm-token:
+    description: "NPM token"
+    required: false
+  prepare-cmds:
+    description: "Publish build preparation commands (ie. `npm ci && npm run test && npm run build`)"
+    required: false
+  package-manager:
+    description: "Package manager (ie. npm, yarn, pnpm, maven, gradle, etc.)"
+    required: false
 
 runs:
   using: "composite"
   steps:
+    - shell: bash
+      run: |
+        if [ -z "${{ inputs.release-type }}" ]; then
+          echo "Error: release-type is required"
+          exit 1
+        fi
+
+        if [ "${{ inputs.release-type }}" == "node" && -z "${{ inputs.node-version }}" ]; then
+          echo "Error: node-version is required when release-type is 'node'"
+          exit 1
+        fi
+
+        if [ "${{ inputs.release-type }}" == "node" && -z "${{ inputs.npm-token }}" ]; then
+          echo "Error: npm-token is required when release-type is 'node'"
+          exit 1
+        fi
+
+        if [ "${{ inputs.release-type }}" == "node" && -z "${{ inputs.package-manager }}" ]; then
+          echo "Error: package-manager is required when release-type is 'node'"
+          exit 1
+        fi
+
+        if [ "${{ inputs.release-type }}" == "node" ]; then
+          if [ "${{ inputs.package-manager }}" != "npm" && "${{ inputs.package-manager }}" != "yarn" && "${{ inputs.package-manager }}" != "pnpm" ]; then
+            echo "Error: package-manager must be 'npm', 'yarn', or 'pnpm' when release-type is 'node'"
+            exit 1
+          fi
+        fi
+
     - uses: googleapis/release-please-action@v4
+      id: release
       with:
         release-type: ${{ inputs.release-type }}
+
+    - shell: bash
+      run: |
+        echo 'Release Debug Outputs:\n${{ toJSON(steps.release.outputs) }}'
+
+    - if: ${{ steps.release.outputs.release_created }}
+      uses: actions/checkout@v4
+
+    - if: ${{ steps.release.outputs.release_created && inputs.release-type == 'node' }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        registry-url: "https://registry.npmjs.org"
+
+    - if: ${{ steps.release.outputs.release_created && inputs.prepare-cmds != '' }}
+      shell: bash
+      run: ${{ inputs.prepare-cmds }}
+
+    - if: ${{ steps.release.outputs.release_created && inputs.release-type == 'node' }}
+      shell: bash
+      run: ${{ inputs.package-manager }} publish --access public --provenance
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.npm-token }}
