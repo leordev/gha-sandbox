@@ -1,0 +1,14 @@
+name: "Releaser"
+description: "Standardized release process"
+
+inputs:
+  release-type:
+    description: "Release type"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: googleapis/release-please-action@v4
+      with:
+        release-type: ${{ inputs.release-type }}
