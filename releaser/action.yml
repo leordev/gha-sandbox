@@ -80,7 +80,7 @@ runs:
         if [ "${{ inputs.package-manager }}" == "yarn" ]; then
           # provenance is not supported for yarn
           # workaround: https://github.com/yarnpkg/berry/issues/5430#issuecomment-1768499845
-          yarn pack
+          yarn pack -f package.tgz
           npm publish package.tgz --access public --provenance
         else
           ${{ inputs.package-manager }} publish --access public --provenance
