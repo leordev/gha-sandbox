@@ -74,6 +74,16 @@ runs:
 
     - if: ${{ steps.release.outputs.release_created && inputs.release-type == 'node' }}
       shell: bash
-      run: ${{ inputs.package-manager }} publish --access public --provenance
+      run: |
+        echo "Publishing with ${{ inputs.package-manager }}"
+
+        if [ "${{ inputs.package-manager }}" == "yarn" ]; then
+          # provenance is not supported for yarn
+          # workaround: https://github.com/yarnpkg/berry/issues/5430#issuecomment-1768499845
+          yarn pack
+          npm publish package.tgz --access public --provenance
+        else
+          ${{ inputs.package-manager }} publish --access public --provenance
+        fi
       env:
         NODE_AUTH_TOKEN: ${{ inputs.npm-token }}
