@@ -51,7 +51,7 @@ runs:
           fi
 
           if [ -z "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
-            echo "Error: `id-token: write` is required to generate provenance for npm"
+            echo "Error: permission id-token: write is required to generate provenance for npm"
             exit 1
           fi
         fi
