@@ -28,24 +28,30 @@ runs:
           exit 1
         fi
 
-        if [ "${{ inputs.release-type }}" == "node" && -z "${{ inputs.node-version }}" ]; then
-          echo "Error: node-version is required when release-type is 'node'"
-          exit 1
-        fi
-
-        if [ "${{ inputs.release-type }}" == "node" && -z "${{ inputs.npm-token }}" ]; then
-          echo "Error: npm-token is required when release-type is 'node'"
-          exit 1
-        fi
-
-        if [ "${{ inputs.release-type }}" == "node" && -z "${{ inputs.package-manager }}" ]; then
-          echo "Error: package-manager is required when release-type is 'node'"
-          exit 1
-        fi
-
+        # Node release checks
         if [ "${{ inputs.release-type }}" == "node" ]; then
+          if [ -z "${{ inputs.node-version }}" ]; then
+            echo "Error: node-version is required when release-type is 'node'"
+            exit 1
+          fi
+
+          if [ -z "${{ inputs.npm-token }}" ]; then
+            echo "Error: npm-token is required when release-type is 'node'"
+            exit 1
+          fi
+
+          if [ -z "${{ inputs.package-manager }}" ]; then
+            echo "Error: package-manager is required when release-type is 'node'"
+            exit 1
+          fi
+          
           if [ "${{ inputs.package-manager }}" != "npm" && "${{ inputs.package-manager }}" != "yarn" && "${{ inputs.package-manager }}" != "pnpm" ]; then
             echo "Error: package-manager must be 'npm', 'yarn', or 'pnpm' when release-type is 'node'"
+            exit 1
+          fi
+
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+            echo "Error: `id-token: write` is required to generate provenance for npm"
             exit 1
           fi
         fi
