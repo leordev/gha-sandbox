@@ -92,11 +92,17 @@ runs:
         echo "Publishing with $PACKAGE_MANAGER"
 
         if [ "$PACKAGE_MANAGER" == "yarn" ]; then
-          # provenance is not supported for yarn
+          # provenance is not supported for yarn < 4.9.0
           # workaround: https://github.com/yarnpkg/berry/issues/5430#issuecomment-1768499845
-          # yarn pack -f package.tgz
-          # npm publish package.tgz --access public --provenance
-          yarn npm publish --access public --provenance
+          YARN_VERSION=$(yarn --version)
+          YARN_VERSION_MAJOR=$(echo "$YARN_VERSION" | cut -d. -f1)
+          YARN_VERSION_MINOR=$(echo "$YARN_VERSION" | cut -d. -f2)
+          if [ "$YARN_VERSION_MAJOR" -lt 4 ] || [ "$YARN_VERSION_MAJOR" -eq 4 -a "$YARN_VERSION_MINOR" -lt 9 ]; then
+            yarn pack -f package.tgz
+            npm publish package.tgz --access public --provenance
+          else
+            yarn publish --access public --provenance
+          fi
         else
           $PACKAGE_MANAGER publish --access public --provenance
         fi
