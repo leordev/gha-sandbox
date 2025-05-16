@@ -22,30 +22,35 @@ runs:
   using: "composite"
   steps:
     - shell: bash
+      env:
+        RELEASE_TYPE: ${{ inputs.release-type }}
+        NODE_VERSION: ${{ inputs.node-version }}
+        NPM_TOKEN: ${{ inputs.npm-token }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       run: |
-        if [ -z "${{ inputs.release-type }}" ]; then
+        if [ -z "$RELEASE_TYPE" ]; then
           echo "Error: release-type is required"
           exit 1
         fi
 
         # Node release checks
-        if [ "${{ inputs.release-type }}" == "node" ]; then
-          if [ -z "${{ inputs.node-version }}" ]; then
+        if [ "$RELEASE_TYPE" == "node" ]; then
+          if [ -z "$NODE_VERSION" ]; then
             echo "Error: node-version is required when release-type is 'node'"
             exit 1
           fi
 
-          if [ -z "${{ inputs.npm-token }}" ]; then
+          if [ -z "$NPM_TOKEN" ]; then
             echo "Error: npm-token is required when release-type is 'node'"
             exit 1
           fi
 
-          if [ -z "${{ inputs.package-manager }}" ]; then
+          if [ -z "$PACKAGE_MANAGER" ]; then
             echo "Error: package-manager is required when release-type is 'node'"
             exit 1
           fi
-          
-          if [ "${{ inputs.package-manager }}" != "npm" && "${{ inputs.package-manager }}" != "yarn" && "${{ inputs.package-manager }}" != "pnpm" ]; then
+
+          if [ "$PACKAGE_MANAGER" != "npm" && "$PACKAGE_MANAGER" != "yarn" && "$PACKAGE_MANAGER" != "pnpm" ]; then
             echo "Error: package-manager must be 'npm', 'yarn', or 'pnpm' when release-type is 'node'"
             exit 1
           fi
@@ -56,7 +61,7 @@ runs:
           fi
         fi
 
-    - uses: googleapis/release-please-action@v4
+    - uses: googleapis/release-please-action@a02a34c4d625f9be7cb89156071d8567266a2445 # v4.2.0
       id: release
       with:
         release-type: ${{ inputs.release-type }}
@@ -66,10 +71,10 @@ runs:
         echo 'Release Debug Outputs:\n${{ toJSON(steps.release.outputs) }}'
 
     - if: ${{ steps.release.outputs.release_created }}
-      uses: actions/checkout@v4
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
     - if: ${{ steps.release.outputs.release_created && inputs.release-type == 'node' }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: ${{ inputs.node-version }}
         registry-url: "https://registry.npmjs.org"
@@ -80,16 +85,17 @@ runs:
 
     - if: ${{ steps.release.outputs.release_created && inputs.release-type == 'node' }}
       shell: bash
+      env:
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
+        NODE_AUTH_TOKEN: ${{ inputs.npm-token }}
       run: |
-        echo "Publishing with ${{ inputs.package-manager }}"
+        echo "Publishing with $PACKAGE_MANAGER"
 
-        if [ "${{ inputs.package-manager }}" == "yarn" ]; then
+        if [ "$PACKAGE_MANAGER" == "yarn" ]; then
           # provenance is not supported for yarn
           # workaround: https://github.com/yarnpkg/berry/issues/5430#issuecomment-1768499845
           yarn pack -f package.tgz
           npm publish package.tgz --access public --provenance
         else
-          ${{ inputs.package-manager }} publish --access public --provenance
+          $PACKAGE_MANAGER publish --access public --provenance
         fi
-      env:
-        NODE_AUTH_TOKEN: ${{ inputs.npm-token }}
