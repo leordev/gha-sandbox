@@ -90,12 +90,4 @@ runs:
         NODE_AUTH_TOKEN: ${{ inputs.npm-token }}
       run: |
         echo "Publishing with $PACKAGE_MANAGER"
-
-        if [ "$PACKAGE_MANAGER" == "yarn" ]; then
-          # provenance is not supported for yarn
-          # workaround: https://github.com/yarnpkg/berry/issues/5430#issuecomment-1768499845
-          yarn pack -f package.tgz
-          npm publish package.tgz --access public --provenance
-        else
-          $PACKAGE_MANAGER publish --access public --provenance
-        fi
+        $PACKAGE_MANAGER publish --access public --provenance
