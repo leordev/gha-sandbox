@@ -24,45 +24,60 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - shell: bash
-      env:
-        RELEASE_TYPE: ${{ inputs.release-type }}
-        NODE_VERSION: ${{ inputs.node-version }}
-        NPM_TOKEN: ${{ inputs.npm-token }}
-        PACKAGE_MANAGER: ${{ inputs.package-manager }}
-      run: |
-        if [ -z "$RELEASE_TYPE" ]; then
-          echo "Error: release-type is required"
-          exit 1
-        fi
+    - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+      name: "Validate Context"
+      with:
+        release-type: ${{ inputs.release-type }}
+        node-version: ${{ inputs.node-version }}
+        npm-token: ${{ inputs.npm-token }}
+        package-manager: ${{ inputs.package-manager }}
+        script: |
+          // Reject non-default branches
+          const defaultBranch   = context.payload.repository.default_branch;
+          const isDefaultBranch = context.ref === `refs/heads/${defaultBranch}`;
+          if (!isDefaultBranch) {
+            core.setFailed(`Refusing to publish from non-default branch ${context.ref}`);
+            return;
+          }
 
-        # Node release checks
-        if [ "$RELEASE_TYPE" == "node" ]; then
-          if [ -z "$NODE_VERSION" ]; then
-            echo "Error: node-version is required when release-type is 'node'"
-            exit 1
-          fi
+          // Allow only default branch pushes or manual runs
+          if (!context.eventName.startsWith('push') && !context.eventName.startsWith('workflow_dispatch')) {
+            core.setFailed(`Refusing to publish for event ${context.eventName}`);
+            return;
+          }
 
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "Error: npm-token is required when release-type is 'node'"
-            exit 1
-          fi
+          const releaseType = core.getInput('release-type');
+          if (releaseType === 'node') {
+            const nodeVersion = core.getInput('node-version');
+            const npmToken = core.getInput('npm-token');
+            const packageManager = core.getInput('package-manager');
+            const idToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+            if (!nodeVersion) {
+              core.setFailed("Error: node-version is required when release-type is 'node'");
+              return;
+            }
+            if (!npmToken) {
+              core.setFailed("Error: npm-token is required when release-type is 'node'");
+              return;
+            }
+            if (!packageManager) {
+              core.setFailed("Error: package-manager is required when release-type is 'node'");
+              return;
+            }
+            if (!['npm', 'yarn', 'pnpm'].includes(packageManager)) {
+              core.setFailed("Error: package-manager must be 'npm', 'yarn', or 'pnpm' when release-type is 'node'");
+              return;
+            }
+            if (!idToken) {
+              core.setFailed("Error: permission id-token: write is required to generate provenance for npm");
+              return;
+            }
+          } else {
+            core.setFailed(`Error: unsupported release-type: ${releaseType}`);
+            return;
+          }
 
-          if [ -z "$PACKAGE_MANAGER" ]; then
-            echo "Error: package-manager is required when release-type is 'node'"
-            exit 1
-          fi
-
-          if [ "$PACKAGE_MANAGER" != "npm" && "$PACKAGE_MANAGER" != "yarn" && "$PACKAGE_MANAGER" != "pnpm" ]; then
-            echo "Error: package-manager must be 'npm', 'yarn', or 'pnpm' when release-type is 'node'"
-            exit 1
-          fi
-
-          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
-            echo "Error: permission id-token: write is required to generate provenance for npm"
-            exit 1
-          fi
-        fi
+          core.info(`✔ Context Guard passed by ${context.actor} on ${context.ref}`);
 
     - if: ${{ inputs.retry-publish == '' || inputs.retry-publish == 'false' }}
       uses: googleapis/release-please-action@a02a34c4d625f9be7cb89156071d8567266a2445 # v4.2.0
@@ -78,6 +93,27 @@ runs:
       if: ${{ inputs.retry-publish || steps.release.outputs.release_created }}
       shell: bash
       run: echo "::set-output name=publish::true"
+
+    - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+      if: ${{ steps.check-release.outputs.publish }}
+      name: "Validate caller to publishing"
+      with:
+        script: |
+          // Actor must be admin
+          const {data} = await github.rest.repos.getCollaboratorPermissionLevel({
+            owner: context.repo.owner,
+            repo:  context.repo.repo,
+            username: context.actor
+          });
+          if (!['admin','maintain'].includes(data.permission)) {
+            core.setFailed(
+              `User ${context.actor} has "${data.permission}" permission; ` +
+              `must be admin or maintainer`
+            );
+            return;
+          }
+
+          core.info(`✔ Publishing Guard passed by ${context.actor} on ${context.ref}`);
 
     - if: ${{ steps.check-release.outputs.publish }}
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
