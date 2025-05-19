@@ -8,6 +8,9 @@ inputs:
   node-version:
     description: "Node version"
     required: false
+  go-version:
+    description: "Go version"
+    required: false
   npm-token:
     description: "NPM token"
     required: false
@@ -72,6 +75,12 @@ runs:
               core.setFailed("Error: permission id-token: write is required to generate provenance for npm");
               return;
             }
+          } else if (releaseType === 'go') {
+            const goVersion = core.getInput('go-version');
+            if (!goVersion) {
+              core.setFailed("Error: go-version is required when release-type is 'go'");
+              return;
+            }
           } else {
             core.setFailed(`Error: unsupported release-type: ${releaseType}`);
             return;
@@ -117,6 +126,11 @@ runs:
 
     - if: ${{ steps.check-release.outputs.publish }}
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+    - if: ${{ steps.check-release.outputs.publish && inputs.release-type == 'node' }}
+      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      with:
+        go-version: ${{ inputs.go-version }}
 
     - if: ${{ steps.check-release.outputs.publish && inputs.release-type == 'node' }}
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
