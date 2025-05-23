@@ -32,6 +32,11 @@ runs:
   steps:
     - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
       name: "Validate Context"
+      env:
+        RELEASE_TYPE: ${{ inputs.release-type }}
+        NODE_VERSION: ${{ inputs.node-version }}
+        NPM_TOKEN: ${{ inputs.npm-token }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       with:
         script: |
           // Reject non-default branches
@@ -48,11 +53,11 @@ runs:
             return;
           }
 
-          const releaseType = core.getInput('release-type');
+          const releaseType = process.env.RELEASE_TYPE;
           if (releaseType === 'node') {
-            const nodeVersion = core.getInput('node-version');
-            const npmToken = core.getInput('npm-token');
-            const packageManager = core.getInput('package-manager');
+            const nodeVersion = process.env.NODE_VERSION;
+            const npmToken = process.env.NPM_TOKEN;
+            const packageManager = process.env.PACKAGE_MANAGER;
             const idToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
             if (!nodeVersion) {
               core.setFailed("Error: node-version is required when release-type is 'node'");
