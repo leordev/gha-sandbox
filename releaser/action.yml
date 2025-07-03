@@ -1,5 +1,5 @@
 name: "Releaser"
-description: "Standardized release process"
+description: "Standardized release process with support from Block OSPO"
 
 inputs:
   release-type:
@@ -32,12 +32,11 @@ runs:
   steps:
     - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
       name: "Validate Context"
-      env:
-        RELEASE_TYPE: ${{ inputs.release-type }}
-        NODE_VERSION: ${{ inputs.node-version }}
-        NPM_TOKEN: ${{ inputs.npm-token }}
-        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       with:
+        release-type: ${{ inputs.release-type }}
+        node-version: ${{ inputs.node-version }}
+        npm-token: ${{ inputs.npm-token }}
+        package-manager: ${{ inputs.package-manager }}
         script: |
           // Reject non-default branches
           const defaultBranch   = context.payload.repository.default_branch;
@@ -53,11 +52,11 @@ runs:
             return;
           }
 
-          const releaseType = process.env.RELEASE_TYPE;
+          const releaseType = core.getInput('release-type');
           if (releaseType === 'node') {
-            const nodeVersion = process.env.NODE_VERSION;
-            const npmToken = process.env.NPM_TOKEN;
-            const packageManager = process.env.PACKAGE_MANAGER;
+            const nodeVersion = core.getInput('node-version');
+            const npmToken = core.getInput('npm-token');
+            const packageManager = core.getInput('package-manager');
             const idToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
             if (!nodeVersion) {
               core.setFailed("Error: node-version is required when release-type is 'node'");
@@ -79,8 +78,6 @@ runs:
               core.setFailed("Error: permission id-token: write is required to generate provenance for npm");
               return;
             }
-          } else if (releaseType === 'go') {
-            core.info("go release type has no special requirements")
           } else {
             core.setFailed(`Error: unsupported release-type: ${releaseType}`);
             return;
@@ -88,26 +85,7 @@ runs:
 
           core.info(`✔ Context Guard passed by ${context.actor} on ${context.ref}`);
 
-    - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
-      id: check-maintainer
-      with:
-        script: |
-          const {data} = await github.rest.repos.getCollaboratorPermissionLevel({
-            owner: context.repo.owner,
-            repo:  context.repo.repo,
-            username: context.actor
-          });
-          if (['admin','maintain'].includes(data.permission)) {
-            core.info(`User ${context.actor} has "${data.permission}" permission; publishing step allowed...`);
-            return true;
-          } else {
-            core.info(
-              `User ${context.actor} has "${data.permission}" permission; ` +
-              `to publish releases, it must be triggered by admin or maintainer`
-            );
-          }
-
-    # - uses: actions/create-github-app-token@v2 # todo: lock sha
+    # - uses: actions/create-github-app-token@df432ceedc7162793a195dd1713ff69aefc7379e # v2.0.6
     #   id: app-token
     #   with:
     #     app-id: ${{ inputs.block-releaser-app-id }}
@@ -115,69 +93,55 @@ runs:
 
     - if: ${{ inputs.retry-publish == '' || inputs.retry-publish == 'false' }}
       uses: googleapis/release-please-action@a02a34c4d625f9be7cb89156071d8567266a2445 # v4.2.0
-      id: release-pr
-      with:
-        release-type: ${{ inputs.release-type }}
-        # token: ${{ steps.app-token.outputs.token }}
-        # skip-github-release: true
-
-    - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
-      id: check-release
-      if: ${{ inputs.retry-publish == '' || inputs.retry-publish == 'false' }}
-      env:
-        RELEASE_CHECK_OUTPUT: ${{ toJSON(steps.release-pr.outputs) }}
-        IS_MAINTAINER: ${{ steps.check-maintainer.outputs.result }}
-      with:
-        script: |
-          const releaseCheckOutput = JSON.parse(process.env.RELEASE_CHECK_OUTPUT);
-          const isMaintainer = process.env.IS_MAINTAINER === 'true';
-
-          core.info(`Release Check Output: ${JSON.stringify(releaseCheckOutput, null, 2)}`);
-
-          const hasPendingReleasePrs = Boolean(releaseCheckOutput.prs_created);
-
-          // We might trigger a release if there are no pending release PRs
-          // but, for that, we need to make sure the actor is a trusted maintainer
-          if (!hasPendingReleasePrs && isMaintainer) {
-            return true;
-          }
-
-    - if: ${{ steps.check-release.outputs.result }}
-      uses: googleapis/release-please-action@a02a34c4d625f9be7cb89156071d8567266a2445 # v4.2.0
       id: release
       with:
         release-type: ${{ inputs.release-type }}
-        skip-github-pull-request: true
+        # token: ${{ steps.app-token.outputs.token }}
 
-    - id: check-publish
+    - shell: bash
+      run: |
+        echo 'Release Debug Outputs:\n${{ toJSON(steps.release.outputs) }}'
+
+    - id: check-release
       if: ${{ inputs.retry-publish || steps.release.outputs.release_created }}
-      uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
-      env:
-        IS_MAINTAINER: ${{ steps.check-maintainer.outputs.result }}
+      shell: bash
+      run: echo "::set-output name=publish::true"
+
+    - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+      if: ${{ steps.check-release.outputs.publish }}
+      name: "Validate caller to publishing"
       with:
         script: |
-          const isMaintainer = process.env.IS_MAINTAINER === 'true';
-          if (!isMaintainer) {
-            core.setFailed("Refusing to publish releases for non-maintainers");
+          // Actor must be admin
+          const {data} = await github.rest.repos.getCollaboratorPermissionLevel({
+            owner: context.repo.owner,
+            repo:  context.repo.repo,
+            username: context.actor
+          });
+          if (!['admin','maintain'].includes(data.permission)) {
+            core.setFailed(
+              `User ${context.actor} has "${data.permission}" permission; ` +
+              `must be admin or maintainer`
+            );
             return;
-          } else {
-            return true;
           }
 
-    - if: ${{ steps.check-publish.outputs.result }}
+          core.info(`✔ Publishing Guard passed by ${context.actor} on ${context.ref}`);
+
+    - if: ${{ steps.check-release.outputs.publish }}
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-    - if: ${{ steps.check-publish.outputs.result && inputs.release-type == 'node' }}
+    - if: ${{ steps.check-release.outputs.publish && inputs.release-type == 'node' }}
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: ${{ inputs.node-version }}
         registry-url: "https://registry.npmjs.org"
 
-    - if: ${{ steps.check-publish.outputs.result && inputs.prepare-cmds != '' }}
+    - if: ${{ steps.check-release.outputs.publish && inputs.prepare-cmds != '' }}
       shell: bash
       run: ${{ inputs.prepare-cmds }}
 
-    - if: ${{ steps.check-publish.outputs.result && inputs.release-type == 'node' }}
+    - if: ${{ steps.check-release.outputs.publish && inputs.release-type == 'node' }}
       shell: bash
       env:
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
